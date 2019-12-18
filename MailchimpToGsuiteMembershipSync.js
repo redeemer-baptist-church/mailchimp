@@ -1,18 +1,21 @@
+require('dotenv').config() // load gcloud credentials in dev
+
 const pluralize = require('pluralize')
 const uniqBy = require('lodash/uniqBy')
 
 const {
   ManagerFactory: GSuiteManagerFactory,
 } = require('@redeemerbc/gsuite')
+const {Secret} = require('@redeemerbc/secret')
 const {Mailchimp} = require('./lib/mailchimp')
 
-class MailchimpToGsuiteMembershipSync {
-  constructor(gsuiteServiceAccount, mailchimpApiKey) {
-    this.gsuiteServiceAccount = gsuiteServiceAccount
-    this.mailchimpApiKey = mailchimpApiKey
-  }
+require('array.prototype.flat').shim()
 
+class MailchimpToGsuiteMembershipSync {
   async run() {
+    this.gsuiteServiceAccount = await new Secret('GsuiteServiceAccount').get()
+    this.mailchimpApiKey = await new Secret('MailchimpApiKey').get()
+
     this.mailchimpGroupedUsers = await this.getMailchimpGroupedUsers()
 
     await this.syncGroupsFromMailchimpToGoogle()
@@ -121,4 +124,8 @@ class MailchimpToGsuiteMembershipSync {
   }
 }
 
-module.exports = {MailchimpToGsuiteMembershipSync}
+new MailchimpToGsuiteMembershipSync().run()
+  .catch((e) => {
+    console.log(e)
+    throw e
+  })

@@ -1,3 +1,5 @@
+require('dotenv').config() // load gcloud credentials in dev
+
 const camelCase = require('lodash/camelCase')
 const cheerio = require('cheerio')
 const dayjs = require('dayjs')
@@ -15,12 +17,10 @@ const {Mailchimp} = require('./lib/mailchimp')
 const {PeopleMapper} = require('./lib/redeemerbc')
 
 class MailchimpNewsletterGenerator {
-  constructor(gsuiteServiceAccount, mailchimpApiKey) {
-    this.gsuiteServiceAccount = gsuiteServiceAccount
-    this.mailchimpApiKey = mailchimpApiKey
-  }
-
   async run() {
+    this.gsuiteServiceAccount = await new Secret('GsuiteServiceAccount').get()
+    this.mailchimpApiKey = await new Secret('MailchimpApiKey').get()
+
     this.peopleMapper = await this.buildGSuitePeopleMapper()
     await this.publishMailchimpNewsletterTemplate()
   }
@@ -71,6 +71,7 @@ class MailchimpNewsletterGenerator {
       'https://www.googleapis.com/auth/calendar.readonly', // read-only acccess to calendar entries
     ]
     const manager = await GSuiteManagerFactory.calendarManager(scopes, this.gsuiteServiceAccount)
+    // TODO: filter out Scripture Reading and other non-human calendars
     const calendars = await manager.getCalendars()
       .then(calendarList => calendarList
         .filter(calendar => !calendar.primary)
@@ -140,7 +141,9 @@ class MailchimpNewsletterGenerator {
 
     // TODO: Make tracks an object with a sanitizeTrackName() method
     return spotifyApi.getPlaylist(playlistId)
-      .then(json => json.body.tracks.items.map(item => item.track.name.replace(' - Live', '')))
+      .then(json => json.body.tracks.items.map(item => item.track.name
+        .replace(' - Live', '')
+        .replace(' (Acoustic)', '')))
   }
 
   async getTemplateHtmlFromMailchimp() {
@@ -200,4 +203,8 @@ class MailchimpNewsletterGenerator {
   }
 }
 
-module.exports = {MailchimpNewsletterGenerator}
+new MailchimpNewsletterGenerator().run()
+  .catch((e) => {
+    console.log(e)
+    throw e
+  })

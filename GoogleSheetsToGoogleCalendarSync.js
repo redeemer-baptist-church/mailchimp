@@ -1,11 +1,16 @@
+require('dotenv').config() // load gcloud credentials in dev
+
 const dayjs = require('dayjs')
 
 const {
   ManagerFactory: GSuiteManagerFactory,
 } = require('@redeemerbc/gsuite')
 const {serialize} = require('@redeemerbc/serialize')
+const {Secret} = require('@redeemerbc/secret')
 const {MasterSchedule} = require('./lib/redeemerbc/schedules')
 const {PeopleMapper} = require('./lib/redeemerbc')
+
+require('array.prototype.flat').shim()
 
 // TODO: calendar scheduling UI
 // * Create a calendar for each position - CM Littles, CM Kids, Setup Truck, etc
@@ -14,24 +19,23 @@ const {PeopleMapper} = require('./lib/redeemerbc')
 // * Provide an interface for editing calendar entries
 // * Support auto-filling the schedule
 
-class GoogleSheetsToGoogleCalendarSync {
-  constructor(gsuiteServiceAccount) {
-    this.gsuiteServiceAccount = gsuiteServiceAccount
-  }
+/*
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+*/
 
+class GoogleSheetsToGoogleCalendarSync {
   async run() {
+    this.gsuiteServiceAccount = await new Secret('GsuiteServiceAccount').get()
+
     // TODO: GSuite "Error: Rate Limit Exceeded"
     // TODO: GSuite "Calendar usage limits exceeded"
     const masterSchedule = await this.getSheetsMasterSchedule()
-    const scheduleGroups = masterSchedule.subSchedules.reduce((table, schedule) => {
-      table[schedule.calendarId] = table[schedule.calendarId] || [] // eslint-disable-line no-param-reassign
-      table[schedule.calendarId].push(schedule)
-      return table
-    }, {})
 
-    Object.keys(scheduleGroups).forEach(async (calendarId) => {
-      const scheduleGroup = scheduleGroups[calendarId]
-      await this.syncScheduleGroupToGoogleCalendar(calendarId, scheduleGroup)
+    Object.keys(masterSchedule.scheduleGroups).forEach((calendarId) => {
+      const scheduleGroup = masterSchedule.scheduleGroups[calendarId]
+      this.syncScheduleGroupToGoogleCalendar(calendarId, scheduleGroup)
     })
   }
 
@@ -58,7 +62,8 @@ class GoogleSheetsToGoogleCalendarSync {
     const manager = await GSuiteManagerFactory.sheetsManager(scopes, this.gsuiteServiceAccount)
     const masterScheduleSheetId = '1RMPEOOnIixOftIKt5VGA1LBQFoWh0-_ohnt34JTnpWw'
     const masterScheduleSheet = await manager.getSpreadsheet(masterScheduleSheetId)
-    const sheet = masterScheduleSheet.getSheet(0)
+    // const sheet = masterScheduleSheet.getSheet(0) // master schedule
+    const sheet = masterScheduleSheet.getSheet(1) // scripture
     const allCells = await manager.getRange({
       spreadsheetId: masterScheduleSheetId,
       range: sheet.sheetName,
@@ -248,8 +253,10 @@ class GoogleSheetsToGoogleCalendarSync {
       eventMapper.toActionBuckets(),
     )
 
+    /*
     console.info(`These Spreadsheet events have previously been synced to Calendar '${calendar.summary}'`,
       eventActionBuckets.synced.map(e => e.serializeCalendarEvent()))
+    */
 
     console.info(`These Spreadsheet events will be updated in Calendar '${calendar.summary}'`,
       eventActionBuckets.update.map(e => `${e.serializeCalendarEvent()} => ${e.serializeScheduleEvent()}`))
@@ -265,4 +272,8 @@ class GoogleSheetsToGoogleCalendarSync {
   }
 }
 
-module.exports = {GoogleSheetsToGoogleCalendarSync}
+new GoogleSheetsToGoogleCalendarSync().run()
+  .catch((e) => {
+    console.log(e)
+    throw e
+  })
