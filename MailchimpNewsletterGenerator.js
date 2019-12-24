@@ -11,15 +11,14 @@ const url = require('url')
 const {
   ManagerFactory: GSuiteManagerFactory,
 } = require('@redeemerbc/gsuite')
-const {Secret} = require('@redeemerbc/secret')
+const {SecretClient} = require('@redeemerbc/secret')
 const {serialize} = require('@redeemerbc/serialize')
 const {Mailchimp} = require('./lib/mailchimp')
 const {PeopleMapper} = require('./lib/redeemerbc')
 
 class MailchimpNewsletterGenerator {
   async run() {
-    this.gsuiteServiceAccount = await new Secret('GsuiteServiceAccount').get()
-    this.mailchimpApiKey = await new Secret('MailchimpApiKey').get()
+    this.mailchimpApiKey = await new SecretClient().read('MailchimpApiKey')
 
     this.peopleMapper = await this.buildGSuitePeopleMapper()
     await this.publishMailchimpNewsletterTemplate()
@@ -38,7 +37,7 @@ class MailchimpNewsletterGenerator {
     const scopes = [
       'https://www.googleapis.com/auth/contacts.readonly', // read-only acccess to contact lists
     ]
-    const manager = await GSuiteManagerFactory.peopleManager(scopes, this.gsuiteServiceAccount)
+    const manager = await GSuiteManagerFactory.peopleManager(scopes)
 
     return manager.getContacts({
       personFields: 'names,emailAddresses',
@@ -70,7 +69,7 @@ class MailchimpNewsletterGenerator {
     const scopes = [
       'https://www.googleapis.com/auth/calendar.readonly', // read-only acccess to calendar entries
     ]
-    const manager = await GSuiteManagerFactory.calendarManager(scopes, this.gsuiteServiceAccount)
+    const manager = await GSuiteManagerFactory.calendarManager(scopes)
     // TODO: filter out Scripture Reading and other non-human calendars
     const calendars = await manager.getCalendars()
       .then(calendarList => calendarList
@@ -89,7 +88,7 @@ class MailchimpNewsletterGenerator {
     const scopes = [
       'https://www.googleapis.com/auth/calendar.readonly', // read-only acccess to calendar entries
     ]
-    const manager = await GSuiteManagerFactory.calendarManager(scopes, this.gsuiteServiceAccount)
+    const manager = await GSuiteManagerFactory.calendarManager(scopes)
     const calendarId = 'redeemerbc.com_gmiihbof3pt28k6lngkoufabqk@group.calendar.google.com'
     const calendar = await manager.getCalendar(calendarId)
 
@@ -107,7 +106,7 @@ class MailchimpNewsletterGenerator {
 
   async getSermonPassage(reference) { // eslint-disable-line class-methods-use-this
     console.info(`Getting ESV text for passage ${reference}`)
-    const esvApiKey = await new Secret('EsvApiKey').get()
+    const esvApiKey = await new SecretClient().read('EsvApiKey')
     return unirest.get('https://api.esv.org/v3/passage/html/')
       .headers({Authorization: esvApiKey})
       .query({
@@ -132,8 +131,8 @@ class MailchimpNewsletterGenerator {
 
   async getSpotifyTracks(playlistId) { // eslint-disable-line class-methods-use-this
     console.info(`Getting Spotify tracks for playlist ${playlistId}`)
-    const clientId = await new Secret('SpotifyClientId').get()
-    const clientSecret = await new Secret('SpotifyClientSecret').get()
+    const clientId = await new SecretClient().read('SpotifyClientId')
+    const clientSecret = await new SecretClient().read('SpotifyClientSecret')
     const spotifyApi = new SpotifyWebApi({clientId, clientSecret})
 
     await spotifyApi.clientCredentialsGrant()
