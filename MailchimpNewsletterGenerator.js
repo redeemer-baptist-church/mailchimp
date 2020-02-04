@@ -33,7 +33,7 @@ class MailchimpNewsletterGenerator {
     return new PeopleMapper(gsuiteContacts)
   }
 
-  async getGSuiteContacts() {
+  async getGSuiteContacts() { // eslint-disable-line class-methods-use-this
     const scopes = [
       'https://www.googleapis.com/auth/contacts.readonly', // read-only acccess to contact lists
     ]
@@ -44,11 +44,11 @@ class MailchimpNewsletterGenerator {
     })
   }
 
-  async buildEventsHtmlForCalendar(calendar) {
+  async buildEventsHtmlForCalendar(date, calendar) {
     return calendar.getEvents({
       singleEvents: true,
-      timeMax: this.serviceDate.endOf('day').toISOString(),
-      timeMin: this.serviceDate.subtract(6, 'days').toISOString(),
+      timeMax: date.endOf('day').toISOString(),
+      timeMin: date.subtract(6, 'days').toISOString(),
     }).then((events) => {
       if (events.length === 0) {
         return ''
@@ -65,7 +65,7 @@ class MailchimpNewsletterGenerator {
     })
   }
 
-  async getCalendarHtml() {
+  async getAllCalendars() { // eslint-disable-line class-methods-use-this
     const scopes = [
       'https://www.googleapis.com/auth/calendar.readonly', // read-only acccess to calendar entries
     ]
@@ -76,12 +76,19 @@ class MailchimpNewsletterGenerator {
         .filter(calendar => !calendar.primary)
         .sort((a, b) => a.summary.localeCompare(b.summary)))
     console.info(`Google reports these calendars: ${calendars.map(c => c.summary)}`)
-    const html = await serialize(calendars.map(calendar => () => this.buildEventsHtmlForCalendar(calendar)))
-      .then(htmlArray => `<dl>${htmlArray.filter(Boolean).join('')}</dl>`)
-    const masterScheduleUrl = 'https://docs.google.com/spreadsheets/d/1RMPEOOnIixOftIKt5VGA1LBQFoWh0-_ohnt34JTnpWw/edit#gid=0' // eslint-disable-line max-len
-    const masterScheduleHtml = `<dt><b><a href="${masterScheduleUrl}">Master Schedule</a></b></dt>`
+    return calendars
+  }
 
-    return `${html}${masterScheduleHtml}`
+  async getCalendarHtml(date, calendars) {
+    const calendarHtml = await serialize(calendars.map(calendar => () => this
+      .buildEventsHtmlForCalendar(date, calendar)))
+      .then(htmlArray => `<dl>${htmlArray.filter(Boolean).join('')}</dl>`)
+    const dateText = date.format('MMMM D, YYYY')
+    const dateHtml = `<span style="font-family:merriweather,georgia,times new roman,serif;font-size:16px">
+      <strong> - ${dateText}</strong>
+    </span>`
+
+    return `${dateHtml}${calendarHtml}`
   }
 
   async getScriptureReferencesFromCalendar() {
@@ -190,9 +197,12 @@ class MailchimpNewsletterGenerator {
       + ` and <a href="${youtubeUrl}">YouTube</a></b><br />`
     $("[data-redeemer-bot='serviceMusic']").html(`${playlistLink}<br />${tracks.join('<br />')}`)
 
-    const calendarHtml = await this.getCalendarHtml()
+    const calendars = await this.getAllCalendars()
+    const thisWeekCalendarHtml = await this.getCalendarHtml(this.serviceDate, calendars)
+    const nextWeekCalendarHtml = await this.getCalendarHtml(this.serviceDate.add(1, 'week'), calendars)
     // TODO: add CSS around this so the pretty template looks good
-    $("[data-redeemer-bot='weeklyCalendars']").html(calendarHtml)
+    $("[data-redeemer-bot='thisWeekCalendar']").html(thisWeekCalendarHtml)
+    $("[data-redeemer-bot='nextWeekCalendar']").html(nextWeekCalendarHtml)
 
     console.info('Publishing the fully fleshed out HTML template to Mailchimp')
     await mailchimp.client.patch('/templates/359109', {
